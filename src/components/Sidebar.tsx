@@ -1,43 +1,90 @@
 'use client'
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Home, AlertTriangle } from 'lucide-react';
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { useState } from "react"
+import { Menu, X, Home, BarChart2, Settings } from "lucide-react"
 
-const Sidebar = () => {
-  const pathname = usePathname();
+import { Button } from "@/components/ui/button"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 
-  const navItems = [
-    { href: "/dashboard", label: "Home", icon: <Home size={20} /> },
-    { href: "/dashboard/errors", label: "Errors", icon: <AlertTriangle size={20} /> },
-  ];
+const navItems = [
+  { href: "/dashboard", label: "Home", icon: Home },
+  { href: "/dashboard/analytics", label: "Dashboard", icon: BarChart2 },
+  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+]
+
+const NavLink = ({ href, label, icon: Icon, isActive }: { href: string; label: string; icon: React.ElementType; isActive: boolean }) => (
+  <Link href={href} passHref>
+    <Button variant={isActive ? "secondary" : "ghost"} className="w-full justify-start">
+      <Icon className="mr-2 h-4 w-4" />
+      {label}
+    </Button>
+  </Link>
+)
+
+export default function Sidebar() {
+  const pathname = usePathname()
+  const [isSheetOpen, setSheetOpen] = useState(false)
+
+  const commonNav = (
+    <nav className="grid gap-2 px-2">
+      {navItems.map((item) => (
+        <NavLink key={item.href} {...item} isActive={pathname === item.href} />
+      ))}
+    </nav>
+  )
 
   return (
-    <aside className="w-64 h-screen fixed left-0 top-0 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col p-4">
-      <div className="mb-8 px-2">
-        <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">API Monitor</h2>
-      </div>
-      <nav className="flex flex-col space-y-2">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-200 ${
-                isActive
-                  ? "bg-blue-600 text-white"
-                  : "text-gray-600 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-50"
-              }`}
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
-    </aside>
-  );
-};
+    <>
+      {/* Desktop Sidebar */}
+      <aside className="hidden md:flex md:flex-col md:w-64 md:fixed md:inset-y-0 md:z-20 border-r bg-background">
+        <div className="flex h-16 items-center justify-between border-b px-4">
+          <Link href="/dashboard" className="font-bold text-lg">
+            API Monitor
+          </Link>
+          <Link href="/projects/new" passHref>
+            <Button variant="outline" size="sm">
+              + Add
+            </Button>
+          </Link>
+        </div>
+        <div className="flex-1 overflow-y-auto py-4">
+          {commonNav}
+        </div>
+      </aside>
 
-export default Sidebar;
+      {/* Mobile Sidebar (Sheet) */}
+      <header className="md:hidden sticky top-0 z-10 flex h-16 items-center justify-between border-b bg-background px-4">
+        <Link href="/" className="font-bold text-lg">
+          API Monitor
+        </Link>
+        <Sheet open={isSheetOpen} onOpenChange={setSheetOpen}>
+          <SheetTrigger asChild>
+            <Button variant="outline" size="icon">
+              <Menu className="h-6 w-6" />
+              <span className="sr-only">Open menu</span>
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-64 p-0">
+            <div className="flex h-16 items-center border-b px-6">
+              <Link href="/" className="font-bold text-lg">
+                API Monitor
+              </Link>
+            </div>
+            <div className="py-4">
+              <div className="px-4 mb-4">
+                <Link href="/projects/new" passHref>
+                  <Button variant="secondary" className="w-full" onClick={() => setSheetOpen(false)}>
+                    + Add Project
+                  </Button>
+                </Link>
+              </div>
+              <div onClick={() => setSheetOpen(false)}>{commonNav}</div>
+            </div>
+          </SheetContent>
+        </Sheet>
+      </header>
+    </>
+  )
+}

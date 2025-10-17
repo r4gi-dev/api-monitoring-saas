@@ -1,115 +1,90 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import dynamic from 'next/dynamic'
-import { supabase } from '@/lib/supabaseClient'
-import { useTheme } from 'next-themes'
+import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
+import { sendLog } from '@/lib/monitoring' // Import the sendLog function
+import ProjectCard from '@/components/ProjectCard'
+import { Button } from '@/components/ui/button'
 
-const Chart = dynamic(() => import('react-apexcharts'), { ssr: false })
-
-type Project = {
-  id: string
-  name: string
-}
-
-type Log = {
-  timestamp: string
-  status_code: number
-  response_ms: number
-  endpoint: string
+interface Project {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
 }
 
 export default function DashboardPage() {
+  const supabase = createClient()
   const [projects, setProjects] = useState<Project[]>([])
-  const [selectedProject, setSelectedProject] = useState<string | null>(null)
-  const [logs, setLogs] = useState<Log[]>([])
-  const { theme } = useTheme()
+  const [loading, setLoading] = useState(true)
 
-  // プロジェクト取得
   useEffect(() => {
     const fetchProjects = async () => {
-      const { data, error } = await supabase.from('projects').select('id,name')
-      if (error) return console.error(error)
-      setProjects(data)
-      if (data.length > 0) setSelectedProject(data[0].id)
-    }
-    fetchProjects()
-  }, [])
+      setLoading(true);
+      const startTime = Date.now();
+      let statusCode = 500; // Default to error
 
-  // ログ取得
-  useEffect(() => {
-    if (!selectedProject) return
-    const fetchLogs = async () => {
-      const { data, error } = await supabase
-        .from('logs')
-        .select('timestamp,status_code,response_ms,endpoint')
-        .eq('project_id', selectedProject)
-        .order('timestamp', { ascending: true })
-      if (error) return console.error(error)
-      setLogs(data)
-    }
-    fetchLogs()
-  }, [selectedProject])
+      try {
+        const { data, error, status } = await supabase
+          .from('projects')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-  // グラフ用データ作成
-  const categories = logs.map((log) => new Date(log.timestamp).toLocaleString())
-  const responseTimes = logs.map((log) => log.response_ms)
-  const errorCounts = logs.map((log) => (log.status_code >= 400 ? 1 : 0))
+        statusCode = status;
 
-  const chartTheme = theme === 'dark' ? 'dark' : 'light';
+        // A 406 status from Supabase can mean an empty table, which is not a critical error.
+        if (error && status !== 406) {
+          throw error;
+        }
+        
+        if (data) {
+          setProjects(data);
+        }
+      } catch (error) {
+        console.error('Error fetching projects:', error);
+        statusCode = 500;
+      } finally {
+        const endTime = Date.now();
+        sendLog({
+          endpoint: 'supabase:projects:select',
+          status_code: statusCode,
+          response_ms: endTime - startTime,
+        });
+        setLoading(false);
+      }
+    };
+
+    fetchProjects();
+  }, [supabase]);
+
+  if (loading) {
+    return <div>Loading projects...</div>
+  }
 
   return (
-    <>
-      <h1 className="text-2xl font-bold mb-6">ダッシュボード</h1>
+    <div>
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="text-3xl font-bold">Projects</h1>
+      </div>
 
-      <div className="mb-4">
-        <label>プロジェクト選択: </label>
-        <select
-          className="ml-2 p-2 rounded bg-secondary text-secondary-foreground"
-          value={selectedProject || ''}
-          onChange={(e) => setSelectedProject(e.target.value)}
-        >
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
+      {projects.length === 0 ? (
+        <div className="text-center py-16 border-2 border-dashed rounded-lg">
+          <h2 className="text-xl font-semibold">No projects yet</h2>
+          <p className="text-muted-foreground mt-2 mb-4">Get started by creating your first project.</p>
+          <Link href="/projects/new">
+            <Button>Create Project</Button>
+          </Link>
+        </div>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {projects.map((project) => (
+            <Link href={`/dashboard/analytics?id=${project.id}`} key={project.id}>
+              <ProjectCard project={project} />
+            </Link>
           ))}
-        </select>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* レスポンスタイムグラフ */}
-        <div className="bg-card text-card-foreground p-4 rounded-lg shadow">
-          <h2 className="text-lg font-semibold mb-2">レスポンスタイム (ms)</h2>
-          <Chart
-            options={{
-              chart: { id: 'response-time', background: 'transparent' },
-              xaxis: { categories },
-              colors: ['#60a5fa'],
-              theme: { mode: chartTheme },
-            }}
-            series={[{ name: 'Response Time', data: responseTimes }]}
-            type="line"
-            height={300}
-          />
         </div>
-
-        {/* エラー件数グラフ */}
-        <div className="bg-card text-card-foreground p-4 rounded-lg shadow">
-          <h2 className="text-lg font-semibold mb-2">エラー件数</h2>
-          <Chart
-            options={{
-              chart: { id: 'error-count', background: 'transparent' },
-              xaxis: { categories },
-              colors: ['#f87171'],
-              theme: { mode: chartTheme },
-            }}
-            series={[{ name: 'Errors', data: errorCounts }]}
-            type="bar"
-            height={300}
-          />
-        </div>
-      </div>
-    </>
+      )}
+    </div>
   )
 }
