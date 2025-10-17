@@ -69,7 +69,7 @@ export default function LoginPage() {
           {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
         </CardContent>
         <div className="mt-4 text-center text-sm pb-4">
-          Don't have an account?{" "}
+          Don&apos;t have an account?{" "}
           <Link href="/signup" className="underline">
             Sign up
           </Link>

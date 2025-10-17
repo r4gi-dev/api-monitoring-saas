@@ -1,33 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabaseClient'
-import { randomUUID } from 'crypto'
+import { createClient } from '@/lib/supabase/server'
 
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    const body = await req.json()
-    const { user_id, name } = body
+    const supabase = await createClient()
 
-    if (!user_id || !name) {
-      return NextResponse.json({ error: 'user_id and name are required' }, { status: 400 })
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const apiKey = randomUUID()
-
-    const { data, error } = await supabase
+    const { data: projects, error } = await supabase
       .from('projects')
-      .insert([{ user_id, name, api_key: apiKey }])
-      .select()
-      .single()
+      .select('id, name, description, created_at, api_key')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      console.error('Error fetching projects:', error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
 
-    return NextResponse.json({ project: data }, { status: 201 })
+    return NextResponse.json({ projects }, { status: 200 })
   } catch (err: unknown) {
     if (err instanceof Error) {
       return NextResponse.json({ error: err.message }, { status: 500 });
     }
   
-    // errがError以外（stringやobjectなど）の場合も安全に処理
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }

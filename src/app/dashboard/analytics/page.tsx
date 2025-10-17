@@ -193,7 +193,7 @@ function AnalyticsDashboard() {
       options: {
         chart: { id: 'response-time-chart', toolbar: { show: false } },
         xaxis: { categories: categories },
-        stroke: { curve: 'smooth' },
+        stroke: { curve: 'smooth' as const },
         markers: { size: 0 },
         tooltip: { x: { format: 'HH:mm:ss' } },
         dataLabels: { enabled: false },
@@ -291,7 +291,7 @@ function AnalyticsDashboard() {
           <Card>
             <CardHeader>
               <CardTitle>Project Details</CardTitle>
-              <CardDescription>Update your project's name and description.</CardDescription>
+              <CardDescription>Update your project&apos;s name and description.</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleUpdateProject} className="space-y-4">
