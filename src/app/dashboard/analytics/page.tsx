@@ -3,11 +3,12 @@
 import { useEffect, useState, Suspense, useMemo } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Users, AlertTriangle, Clock, Activity } from "lucide-react"
+import { AlertTriangle, Clock, Activity, Bug } from "lucide-react"
 import ApiKeyManager from '@/components/ApiKeyManager'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,6 +25,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 const Chart = dynamic(() => import('react-apexcharts'), { ssr: false })
 
@@ -51,7 +59,9 @@ function AnalyticsDashboard() {
   const projectId = searchParams.get('id')
 
   const [project, setProject] = useState<Project | null>(null)
+  const [allProjects, setAllProjects] = useState<Project[]>([])
   const [logs, setLogs] = useState<Log[]>([])
+  const [runtimeErrorCount, setRuntimeErrorCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -61,47 +71,62 @@ function AnalyticsDashboard() {
   const [isUpdatingProject, setIsUpdatingProject] = useState(false)
 
   useEffect(() => {
-    if (!projectId) {
-      setLoading(false)
-      setError('No project selected. Please select a project from the dashboard.')
-      return
-    }
-
     const fetchData = async () => {
       setLoading(true)
       setError(null)
 
-      // Fetch project details
-      const { data: projectData, error: projectError } = await supabase
+      // --- 全プロジェクトのフェッチ ---
+      const { data: allProjectsData, error: allProjectsError } = await supabase
         .from('projects')
-        .select('*')
-        .eq('id', projectId)
-        .single()
+        .select('*') // Select all columns to match the Project type
+        .order('name', { ascending: true })
 
-      if (projectError) {
-        console.error('Error fetching project:', projectError)
+      if (allProjectsError) {
+        console.error('Error fetching all projects:', allProjectsError)
+      } else {
+        setAllProjects(allProjectsData)
+      }
+
+      if (!projectId) {
+        setLoading(false)
+        setError('No project selected. Please select a project from the dashboard.')
+        return
+      }
+
+      // Fetch project details, logs, and error count in parallel
+      const [projectResult, logsResult, errorCountResult] = await Promise.all([
+        supabase.from('projects').select('*').eq('id', projectId).single(),
+        supabase.from('logs').select('*').eq('project_id', projectId).order('timestamp', { ascending: true }),
+        supabase.from('errors').select('*', { count: 'exact', head: true }).eq('project_id', projectId)
+      ]);
+
+      // Handle project details result
+      if (projectResult.error) {
+        console.error('Error fetching project:', projectResult.error)
         setError('Failed to load project. It may not exist or you may not have permission to view it.')
         setProject(null)
         setLoading(false)
         return
       }
-      setProject(projectData)
-      setEditName(projectData.name)
-      setEditDescription(projectData.description || '')
+      setProject(projectResult.data)
+      setEditName(projectResult.data.name)
+      setEditDescription(projectResult.data.description || '')
 
-      // Fetch initial logs for the project
-      const { data: logsData, error: logsError } = await supabase
-        .from('logs')
-        .select('*')
-        .eq('project_id', projectId)
-        .order('timestamp', { ascending: true })
-
-      if (logsError) {
-        console.error('Error fetching logs:', logsError)
+      // Handle logs result
+      if (logsResult.error) {
+        console.error('Error fetching logs:', logsResult.error)
         setError('Failed to load logs.')
         setLogs([])
       } else {
-        setLogs(logsData)
+        setLogs(logsResult.data)
+      }
+
+      // Handle error count result
+      if (errorCountResult.error) {
+        console.error('Error fetching runtime error count:', errorCountResult.error);
+        setRuntimeErrorCount(0);
+      } else {
+        setRuntimeErrorCount(errorCountResult.count || 0);
       }
 
       setLoading(false)
@@ -206,6 +231,15 @@ function AnalyticsDashboard() {
     }
   }, [logs])
 
+  // Handle project selection change
+  const handleProjectChange = (newProjectId: string) => {
+    if (newProjectId) {
+      router.push(`/dashboard/analytics?id=${newProjectId}`)
+    } else {
+      router.push(`/dashboard/analytics`)
+    }
+  }
+
   if (loading) {
     return <div className="p-4 text-center">Loading project data...</div>
   }
@@ -214,13 +248,57 @@ function AnalyticsDashboard() {
     return <div className="p-4 text-center text-red-600">{error}</div>
   }
 
+  if (!project && !projectId) {
+    return (
+      <div className="p-4 text-center text-muted-foreground space-y-4">
+        <h1 className="text-3xl font-bold">Select a Project</h1>
+        <p>Please select a project from the dropdown above to view its analytics and settings.</p>
+        {allProjects.length > 0 && (
+          <div className="flex justify-center">
+            <Select value={projectId || ''} onValueChange={handleProjectChange}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Select Project" />
+              </SelectTrigger>
+              <SelectContent>
+                {allProjects.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {allProjects.length === 0 && (
+          <p>You don&apos;t have any projects yet. Go to <Link href="/dashboard" className="underline">Overview</Link> to create one.</p>
+        )}
+      </div>
+    )
+  }
+
   if (!project) {
-    return <div className="p-4 text-center text-muted-foreground">Project not found.</div>
+    return <div className="p-4 text-center">Project not found.</div>;
   }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">{project.name}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">{project.name || 'Project Details'}</h1>
+        {allProjects.length > 0 && (
+          <Select value={projectId || ''} onValueChange={handleProjectChange}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Select Project" />
+            </SelectTrigger>
+            <SelectContent>
+              {allProjects.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
       
       <Tabs defaultValue="analytics" className="space-y-4">
         <TabsList>
@@ -230,7 +308,7 @@ function AnalyticsDashboard() {
         
         <TabsContent value="analytics" className="space-y-6">
           {/* KPI Cards */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Requests</CardTitle>
@@ -259,6 +337,16 @@ function AnalyticsDashboard() {
               <CardContent>
                 <div className="text-2xl font-bold">{kpis.avgResponseTime}ms</div>
                 <p className="text-xs text-muted-foreground">Average latency</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Runtime Errors</CardTitle>
+                <Bug className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{runtimeErrorCount}</div>
+                <p className="text-xs text-muted-foreground">Total runtime errors reported</p>
               </CardContent>
             </Card>
           </div>

@@ -32,3 +32,48 @@ export function sendLog(payload: LogPayload) {
     console.error('Failed to send log to API Monitor:', error);
   });
 }
+
+/**
+ * このアプリケーション自身のエラーをAPI監視サーバーに送信します。
+ * @param {Error} error - 発生したErrorオブジェクト。
+ * @param {Record<string, any>} [metadata] - 追加情報（例: コンポーネント名など）。
+ */
+export async function reportError(error: Error, metadata: Record<string, unknown> = {}) {
+  const endpoint = `${process.env.NEXT_PUBLIC_API_ENDPOINT || ''}/api/errors`;
+  const projectId = process.env.NEXT_PUBLIC_SELF_MONITORING_PROJECT_ID;
+
+  if (!projectId) {
+    console.warn('SELF_MONITORING_PROJECT_ID is not set. Skipping error report.');
+    return;
+  }
+
+  const payload = {
+    projectId: projectId,
+    errorMessage: error.message,
+    stackTrace: error.stack,
+    timestamp: new Date().toISOString(),
+    metadata: {
+      ...metadata,
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Node.js',
+      page: typeof window !== 'undefined' ? window.location.href : 'N/A',
+    },
+  };
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    });
+
+    if (!response.ok) {
+      // エラー報告のエラーはコンソールに出力するのみ
+      console.error('Failed to report error to self-monitoring endpoint:', await response.text());
+    }
+  } catch (e) {
+    console.error('An error occurred while reporting another error:', e);
+  }
+}

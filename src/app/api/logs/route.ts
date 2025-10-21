@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   let logData
   try {
     logData = await req.json()
-  } catch (e) {
+  } catch (_e) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 

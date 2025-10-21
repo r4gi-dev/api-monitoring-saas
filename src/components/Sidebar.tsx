@@ -3,20 +3,20 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
-import { Menu, X, Home, BarChart2, Settings } from "lucide-react"
+import { Menu, X, Home, BarChart2, Settings, ShieldAlert } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 
-const navItems = [
-  { href: "/dashboard", label: "Home", icon: Home },
-  { href: "/dashboard/analytics", label: "Dashboard", icon: BarChart2 },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+const topNavItems = [
+  { href: "/dashboard", label: "Overview", icon: Home },
+  { href: "/dashboard/analytics", label: "Analytics", icon: BarChart2 },
+  { href: "/dashboard/errors", label: "Errors", icon: ShieldAlert },
 ]
 
-const NavLink = ({ href, label, icon: Icon, isActive }: { href: string; label: string; icon: React.ElementType; isActive: boolean }) => (
+const NavLink = ({ href, label, icon: Icon, isActive, onClick }: { href: string; label: string; icon: React.ElementType; isActive: boolean; onClick?: () => void }) => (
   <Link href={href} passHref>
-    <Button variant={isActive ? "secondary" : "ghost"} className="w-full justify-start">
+    <Button variant={isActive ? "secondary" : "ghost"} className="w-full justify-start" onClick={onClick}>
       <Icon className="mr-2 h-4 w-4" />
       {label}
     </Button>
@@ -29,12 +29,21 @@ export default function Sidebar() {
 
   const commonNav = (
     <nav className="grid gap-2 px-2">
-      {navItems.map((item) => (
-        <NavLink key={item.href} {...item} isActive={pathname === item.href} />
+      {topNavItems.map((item) => (
+        <NavLink key={item.href} {...item} isActive={pathname === item.href} onClick={() => setSheetOpen(false)} />
       ))}
     </nav>
   )
 
+  const settingsNavLink = (
+    <NavLink
+      href="/dashboard/settings"
+      label="Settings"
+      icon={Settings}
+      isActive={pathname === "/dashboard/settings"}
+      onClick={() => setSheetOpen(false)}
+    />
+  )
   return (
     <>
       {/* Desktop Sidebar */}
@@ -49,8 +58,11 @@ export default function Sidebar() {
             </Button>
           </Link>
         </div>
-        <div className="flex-1 overflow-y-auto py-4">
+        <div className="flex-1 overflow-y-auto py-4 flex flex-col">
           {commonNav}
+          <div className="mt-auto px-2">
+            {settingsNavLink}
+          </div>
         </div>
       </aside>
 
@@ -72,7 +84,7 @@ export default function Sidebar() {
                 API Monitor
               </Link>
             </div>
-            <div className="py-4">
+            <div className="py-4 flex flex-col h-full">
               <div className="px-4 mb-4">
                 <Link href="/projects/new" passHref>
                   <Button variant="secondary" className="w-full" onClick={() => setSheetOpen(false)}>
@@ -80,7 +92,10 @@ export default function Sidebar() {
                   </Button>
                 </Link>
               </div>
-              <div onClick={() => setSheetOpen(false)}>{commonNav}</div>
+              <div className="flex-1" onClick={() => setSheetOpen(false)}>{commonNav}</div>
+              <div className="mt-auto px-2" onClick={() => setSheetOpen(false)}>
+                {settingsNavLink}
+              </div>
             </div>
           </SheetContent>
         </Sheet>
