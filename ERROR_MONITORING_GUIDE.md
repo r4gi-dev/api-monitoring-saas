@@ -26,16 +26,17 @@
 
 この関数は、エラーオブジェクトを受け取り、指定されたエンドポイント (`/api/errors`) にPOSTリクエストを送信します。
 
-```javascript
+#### クライアントサイドからのエラー報告 (`reportError`)
+
+```typescript
 /**
- * エラー情報をAPI監視サーバーに送信します。
+ * クライアントサイドで発生したエラー情報をAPI監視サーバーに送信します。
  * @param {Error} error - 発生したErrorオブジェクト。
  * @param {string} projectId - 監視対象のプロジェクトID。
- * @param {object} [metadata] - 追加情報（例: ユーザー情報、リクエスト情報など）。
+ * @param {Record<string, unknown>} [metadata] - 追加情報（例: ユーザー情報、リクエスト情報など）。
  */
-async function reportError(error, projectId, metadata = {}) {
-  // TODO: 本番環境のURLに置き換えてください
-  const endpoint = 'http://localhost:3000/api/errors';
+async function reportError(error: Error, projectId: string, metadata: Record<string, unknown> = {}) {
+  const endpoint = `${process.env.NEXT_PUBLIC_API_ENDPOINT || ''}/api/errors`; // 環境変数からエンドポイントを取得
 
   const payload = {
     projectId: projectId,
@@ -46,6 +47,7 @@ async function reportError(error, projectId, metadata = {}) {
       ...metadata,
       // ブラウザ環境であれば、ユーザーエージェントなどの情報も追加できます
       userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A',
+      page: typeof window !== 'undefined' ? window.location.href : 'N/A',
     },
   };
 
@@ -67,13 +69,56 @@ async function reportError(error, projectId, metadata = {}) {
 }
 ```
 
+#### サーバーサイドからのエラー報告 (`reportServerError`)
+
+```typescript
+/**
+ * サーバーサイドで発生したエラー情報をAPI監視サーバーに送信します。
+ * @param {Error} error - 発生したErrorオブジェクト。
+ * @param {string} projectId - 監視対象のプロジェクトID。
+ * @param {Record<string, unknown>} [metadata] - 追加情報（例: APIルート名など）。
+ */
+async function reportServerError(error: Error, projectId: string, metadata: Record<string, unknown> = {}) {
+  const endpoint = `${process.env.NEXT_PUBLIC_API_ENDPOINT || ''}/api/errors`; // 環境変数からエンドポイントを取得
+
+  const payload = {
+    projectId: projectId,
+    errorMessage: error.message,
+    stackTrace: error.stack,
+    timestamp: new Date().toISOString(),
+    metadata: {
+      ...metadata,
+      environment: process.env.NODE_ENV || 'development',
+      type: 'ServerError',
+    },
+  };
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to report server error:', await response.text());
+    }
+  } catch (e) {
+    console.error('An error occurred while reporting another server error:', e);
+);
+  }
+}
+```
+
 ### ステップ3: エラーハンドラでの呼び出し
 
-実装した `reportError` 関数を、アプリケーションのエラーハンドリング箇所で呼び出します。
+実装した `reportError` または `reportServerError` 関数を、アプリケーションのエラーハンドリング箇所で呼び出します。
 
-#### 例1: `try...catch` ブロックでの利用
+#### 例1: `try...catch` ブロックでの利用 (クライアント/サーバー共通)
 
-```javascript
+```typescript
 const MY_PROJECT_ID = '取得したプロジェクトID';
 
 try {
@@ -81,8 +126,10 @@ try {
   const result = someFunctionThatMayFail();
 } catch (error) {
   console.error('Caught an error:', error);
-  // エラーをサーバーに報告
-  reportError(error, MY_PROJECT_ID);
+  // クライアントサイドの場合
+  reportError(error as Error, MY_PROJECT_ID);
+  // サーバーサイドの場合
+  reportServerError(error as Error, MY_PROJECT_ID, { apiRoute: '/api/my-route' });
 }
 ```
 
@@ -90,7 +137,9 @@ try {
 
 予期しないすべてのエラーをキャッチするために、グローバルなエラーリスナーを設定します。
 
-```javascript
+```typescript
+const MY_PROJECT_ID = '取得したプロジェクトID';
+
 window.addEventListener('error', (event) => {
   if (event.error) {
     reportError(event.error, MY_PROJECT_ID, { type: 'uncaughtException' });
@@ -102,6 +151,27 @@ window.addEventListener('unhandledrejection', (event) => {
     reportError(event.reason, MY_PROJECT_ID, { type: 'unhandledRejection' });
   }
 });
+```
+
+#### 例3: その他のクライアントサイドロジックでの利用
+
+Reactコンポーネントのライフサイクルやネットワークリクエスト以外で、重要なクライアントサイドロジック（例: 複雑な計算処理、Web Workerとの連携など）でエラーが発生する可能性がある場合、明示的に `try...catch` ブロックを使用し、`reportError` でエラーを報告することを推奨します。
+
+```typescript
+const MY_PROJECT_ID = '取得したプロジェクトID';
+
+function performCriticalClientLogic() {
+  try {
+    // エラーが発生する可能性のある重要なクライアントサイド処理
+    const result = someComplexCalculation();
+    return result;
+  } catch (error) {
+    console.error('Critical client logic failed:', error);
+    reportError(error as Error, MY_PROJECT_ID, { type: 'CriticalClientLogicError' });
+    // エラーに応じた適切なフォールバック処理
+    throw error; // 必要に応じてエラーを再スロー
+  }
+}
 ```
 
 ## 3. 機能の使い方

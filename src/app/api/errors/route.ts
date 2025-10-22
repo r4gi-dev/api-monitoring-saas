@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { reportServerError } from '@/lib/monitoring';
 
 // The payload structure from the client
 interface ErrorPayload {
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
 
     if (insertError) {
       console.error('Supabase insert error:', insertError);
+      reportServerError(new Error(insertError.message), { apiRoute: '/api/errors', type: 'SupabaseInsertError', details: insertError });
       return NextResponse.json({ message: 'Failed to save error report', error: insertError.message }, { status: 500 });
     }
 
@@ -40,8 +42,10 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Failed to process error report:', error);
     if (error instanceof Error) {
+        reportServerError(error, { apiRoute: '/api/errors', type: 'RequestProcessingError' });
         return NextResponse.json({ message: 'Invalid request', error: error.message }, { status: 400 });
     }
+    reportServerError(new Error(String(error)), { apiRoute: '/api/errors', type: 'UnknownRequestProcessingError' });
     return NextResponse.json({ message: 'An unknown error occurred' }, { status: 500 });
   }
 }

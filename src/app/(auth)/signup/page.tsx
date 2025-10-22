@@ -1,44 +1,22 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import Link from 'next/link'
+import { useAuth } from '@/hooks/useAuth' // Import useAuth
 
 export default function SignupPage() {
-  const supabase = createClient()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [username, setUsername] = useState('') // Add username state
-  const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-  const router = useRouter()
+  const [username, setUsername] = useState('')
+  const { signup, authResult } = useAuth() // Use the useAuth hook
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
-    setMessage(null)
-
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${location.origin}/auth/callback`,
-        data: {
-          username: username,
-        },
-      },
-    })
-
-    if (error) {
-      setError(error.message)
-    } else {
-      setMessage('Account created! Please check your email for verification.')
-    }
+    await signup(email, password, username) // Call signup from the hook
   }
 
   return (
@@ -84,10 +62,12 @@ export default function SignupPage() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            <Button type="submit" className="w-full">Create account</Button>
+            <Button type="submit" className="w-full" disabled={authResult.loading}>
+              {authResult.loading ? 'Creating account...' : 'Create account'}
+            </Button>
           </form>
-          {message && <p className="text-sm text-green-600 mt-2">{message}</p>}
-          {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
+          {authResult.message && <p className="text-sm text-green-600 mt-2">{authResult.message}</p>}
+          {authResult.error && <p className="text-sm text-red-600 mt-2">{authResult.error}</p>}
         </CardContent>
         <div className="mt-4 text-center text-sm pb-4">
           Already have an account?{" "}

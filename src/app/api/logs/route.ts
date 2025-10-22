@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { reportServerError } from '@/lib/monitoring';
 
 // Create a Supabase client with the service role key
 // This client can bypass RLS policies
@@ -12,6 +13,7 @@ export async function POST(req: NextRequest) {
   // 1. Authenticate the request with the API key
   const authHeader = req.headers.get('Authorization')
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    reportServerError(new Error('Missing or invalid Authorization header'), { apiRoute: '/api/logs', type: 'AuthHeaderError' });
     return NextResponse.json({ error: 'Missing or invalid Authorization header' }, { status: 401 })
   }
   const apiKey = authHeader.substring(7)
@@ -24,6 +26,7 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (projectError || !project) {
+    reportServerError(new Error('Invalid API key or project not found'), { apiRoute: '/api/logs', type: 'ProjectAuthError' });
     return NextResponse.json({ error: 'Invalid API key' }, { status: 403 })
   }
 
@@ -32,12 +35,14 @@ export async function POST(req: NextRequest) {
   try {
     logData = await req.json()
   } catch (_e) {
+    reportServerError(new Error(String(_e)), { apiRoute: '/api/logs', type: 'InvalidJsonBody' });
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
   const { endpoint, status_code, response_ms } = logData
 
   if (endpoint === undefined || status_code === undefined || response_ms === undefined) {
+    reportServerError(new Error('Missing required log fields'), { apiRoute: '/api/logs', type: 'MissingLogFields' });
     return NextResponse.json({ error: 'Missing required log fields' }, { status: 400 })
   }
 
@@ -53,6 +58,7 @@ export async function POST(req: NextRequest) {
 
   if (logError) {
     console.error('Error inserting log:', logError)
+    reportServerError(new Error(logError.message), { apiRoute: '/api/logs', type: 'SupabaseInsertError', details: logError });
     return NextResponse.json({ error: 'Failed to record log', details: logError.message }, { status: 500 })
   }
 

@@ -1,35 +1,21 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import Link from 'next/link'
+import { useAuth } from '@/hooks/useAuth' // Import useAuth
 
 export default function LoginPage() {
-  const supabase = createClient()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const router = useRouter()
+  const { login, authResult } = useAuth() // Use the useAuth hook
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) {
-      setError(error.message)
-    } else {
-      router.push('/dashboard')
-    }
+    await login(email, password) // Call login from the hook
   }
 
   return (
@@ -64,9 +50,11 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            <Button type="submit" className="w-full">Login</Button>
+            <Button type="submit" className="w-full" disabled={authResult.loading}>
+              {authResult.loading ? 'Logging in...' : 'Login'}
+            </Button>
           </form>
-          {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
+          {authResult.error && <p className="text-sm text-red-600 mt-2">{authResult.error}</p>}
         </CardContent>
         <div className="mt-4 text-center text-sm pb-4">
           Don&apos;t have an account?{" "}
